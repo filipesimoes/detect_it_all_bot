@@ -74,6 +74,7 @@ class LBPHFacedDetector():
             (x, y, w, h) = face_coords
             face = gray[y:y+h, x:x+w]
             face_id, confidence = self.recognizer.predict(face)
+            print(face_id, confidence)
             probability = 100 - confidence
             if probability >= self.min_probability:
                 recognized_faces.append({
@@ -113,6 +114,8 @@ def main():
                         help='The names list to be used.')
     parser.add_argument('-d', '--cooldown', default=30, type=float,
                         help='The cooldown after a detection in seconds. Default: 30')
+    parser.add_argument('-m', '--minimum_probability', default=50, type=float,
+                        help='The minimum probability to accept a face as a match. Default: 50')
     parser.add_argument(
         '-u', '--url', help='The stream name (can be an url or the device name).')
     parser.add_argument('-v', '--visible', default=False, type=bool,
@@ -135,6 +138,7 @@ def main():
         cap,
         cooldown=args.cooldown,
         visible=args.visible,
+        min_probability=args.minimum_probability,
     )
     bot = detect_it_all_bot.DetectItAllBot(args.token, args.password, detector)
     detector.callback = bot.detection_callback
