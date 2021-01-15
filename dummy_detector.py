@@ -9,7 +9,7 @@ class DummyDetector():
         self.running = True
         self.detections = {}
         self.callback = self.log_callback
-        t = threading.Thread(target=self.send_detections)
+        t = threading.Thread(target=self._send_detections)
         t.daemon = True
         t.start()
 
@@ -19,7 +19,7 @@ class DummyDetector():
     def stop(self):
         self.running = False
 
-    def send_detections(self):
+    def _send_detections(self):
         while self.running:
             detections = self.detections.copy()
             self.detections.clear()

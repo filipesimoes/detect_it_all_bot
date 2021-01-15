@@ -35,7 +35,7 @@ class YOLODetector():
         self.selected_classes = selected_classes
         self.user_detections = {}
         self.user_cooldown = {}
-        t = threading.Thread(target=self.run_detection)
+        t = threading.Thread(target=self._run_detection)
         t.daemon = True
         t.start()
 
@@ -64,11 +64,11 @@ The available classes are:
         else:
             return "You have to give me something to detect."
 
-    def run_detection(self):
+    def _run_detection(self):
         while self.running:
             if len(self.user_detections) > 0 or self.visible:
-                frame = self.cap.read()
                 t0 = time.time()
+                frame = self.cap.read()
                 results = self.detect_in_frame(frame)
                 logging.debug(f'Detected {len(results)} objects.')
                 for result in results:
@@ -161,7 +161,8 @@ def main():
                         help='YOLO weights file. Default: yolov3.weights.')
     parser.add_argument('-t', '--confidence_threshold', type=float,
                         default=0.5, help='The confidence threshold. Default: 0.5.')
-    parser.add_argument('-u', '--url', help='The RTSP stream.')
+    parser.add_argument(
+        '-u', '--url', help='The stream name (can be an url or the device name).')
     parser.add_argument('-k', '--token', help='The telegram bot token.')
     parser.add_argument('-p', '--password', required=True,
                         help='The telegram bot client password.')
