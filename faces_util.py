@@ -55,14 +55,12 @@ def align_face(img,
 
 def detect_eyes(eyes):
     assert len(eyes) == 2
-    (x0, y0, w0, h0) = eyes[0]
-    (x1, y1, w1, h1) = eyes[1]
-    if x0 < x1:
-        left_eye = (x0, y0, w0, h0)
-        right_eye = (x1, y1, w1, h1)
+    if eyes[0][0] < eyes[1][0]:
+        left_eye = eyes[0]
+        right_eye = eyes[1]
     else:
-        left_eye = (x1, y1, w1, h1)
-        right_eye = (x0, y0, w0, h0)
+        left_eye = eyes[1]
+        right_eye = eyes[0]
     return left_eye, right_eye
 
 
