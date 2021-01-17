@@ -46,25 +46,28 @@ class LBPHFacedDetector():
                 faces = self.detect_in_frame(frame)
                 if len(faces) > 0:
                     detection_text = f"{len(faces)} faces detected."
+                    detected = False
                     for face in faces:
                         (x, y, w, h) = face["coords"]
                         face_id = face["face_id"]
                         name = face["name"]
                         probability = face["probability"]
-                        text = f"{name} ({face_id}): {probability:.1f}"
-                        cv.rectangle(
-                            frame, (x, y), (x + w, y + h), self.color, 2)
-                        cv.putText(frame, text, (x, y - 5),
-                                   cv.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 1)
-                    for user_id in self.users:
-                        if self.user_cooldown[user_id] < time.time():
-                            self.user_cooldown[user_id] = time.time(
-                            ) + self.cooldown
-                            self.callback(user_id, detection_text, frame)
+                        if self.visible:
+                            text = f"{name} ({face_id}): {probability:.1f}"
+                            cv.rectangle(
+                                frame, (x, y), (x + w, y + h), self.color, 2)
+                            cv.putText(frame, text, (x, y - 5),
+                                    cv.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 1)
+                        detected = detected or probability >= self.min_probability
+                    if detected:
+                        for user_id in self.users:
+                            if self.user_cooldown[user_id] < time.time():
+                                self.user_cooldown[user_id] = time.time(
+                                ) + self.cooldown
+                                self.callback(user_id, detection_text, frame)
                 if self.visible:
                     cv.imshow('lbph_face_detector', frame)
                     cv.waitKey(1)
-            pass
 
     def detect_in_frame(self, frame):
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
@@ -74,15 +77,14 @@ class LBPHFacedDetector():
             (x, y, w, h) = face_coords
             face = gray[y:y+h, x:x+w]
             face_id, confidence = self.recognizer.predict(face)
-            print(face_id, confidence)
             probability = 100 - confidence
-            if probability >= self.min_probability:
-                recognized_faces.append({
-                    "face_id": face_id,
-                    "probability": probability,
-                    "name": self.names[face_id],
-                    "coords": face_coords,
-                })
+            name = self.names[face_id] if probability >= self.min_probability else "unknown"
+            recognized_faces.append({
+                "face_id": face_id,
+                "probability": probability,
+                "name": name,
+                "coords": face_coords,
+            })
         return recognized_faces
 
     def describe(self):
@@ -95,12 +97,12 @@ Just send '/detect' and we are ready.
 
     def detect(self, user_id, args):
         self.users.add(user_id)
-        self.user_cooldown[user_id] = 0
+        self.user_cooldown[user_id]=0
         return f"Detection in progress."
 
 
 def main():
-    parser = util.HelperParser(
+    parser=util.HelperParser(
         description='OpenCV cascade classifier and LBPH face recognizer.')
     parser.add_argument('-k', '--token', required=True,
                         help='The telegram bot token.')
@@ -121,17 +123,17 @@ def main():
     parser.add_argument('-v', '--visible', default=False, type=bool,
                         help='Show detect window. Default: False')
 
-    args = parser.parse_args()
+    args=parser.parse_args()
 
-    cap = util.BufferlessVideoCapture(args.url)
+    cap=util.BufferlessVideoCapture(args.url)
     if not cap.isOpened():
         print("Cannot open stream")
         exit()
     else:
         print("Stream opened")
 
-    args = parser.parse_args()
-    detector = LBPHFacedDetector(
+    args=parser.parse_args()
+    detector=LBPHFacedDetector(
         args.classifier,
         args.recognizer,
         args.names,
@@ -140,16 +142,16 @@ def main():
         visible=args.visible,
         min_probability=args.minimum_probability,
     )
-    bot = detect_it_all_bot.DetectItAllBot(args.token, args.password, detector)
-    detector.callback = bot.detection_callback
+    bot=detect_it_all_bot.DetectItAllBot(args.token, args.password, detector)
+    detector.callback=bot.detection_callback
 
     def stop():
         cap.release()
         detector.stop()
         bot.stop()
 
-    killer = util.GracefulKiller()
-    killer.exit_func = stop
+    killer=util.GracefulKiller()
+    killer.exit_func=stop
     bot.start()
 
 
