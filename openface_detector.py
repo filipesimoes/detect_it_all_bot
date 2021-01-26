@@ -6,7 +6,7 @@ import time
 from faces_util import align_face
 
 
-class LBPHFacedDetector():
+class OpenfaceDetector():
 
     def __init__(self,
                  classifier_path: str,
@@ -141,7 +141,7 @@ def main():
         print("Stream opened")
 
     args = parser.parse_args()
-    detector = LBPHFacedDetector(
+    detector = OpenfaceDetector(
         args.classifier,
         args.eye_classifier,
         args.recognizer,

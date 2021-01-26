@@ -1,18 +1,62 @@
 import util
 import cv2 as cv
 import numpy as np
+from typing import NamedTuple, List, Tuple
+
+
+class Face(NamedTuple):
+    bbox: Tuple = None
+    mat: np.ndarray = None
+    eyes: List[Tuple] = None
+
+
+def detect_faces(img,
+                 face_classifier: cv.CascadeClassifier,
+                 eye_classifier: cv.CascadeClassifier,
+                 scale_factor: float = 1.3,
+                 min_neighbors: int = 5,
+                 max_faces: int = None,
+                 desired_left_eye=(0.32, 0.32),
+                 desired_face_width=256,
+                 desired_face_height=None,) -> List[NamedTuple]:
+    """
+    Detect faces and align it based on eyes landmarks.
+    """
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    detected = []
+    faces = face_classifier.detectMultiScale(gray, scale_factor, min_neighbors)
+    for face_bbox in faces:
+        (x, y, w, h) = face_bbox
+        face = gray[y:y+h, x:x+w]
+        eyes = eye_classifier.detectMultiScale(
+            face, scale_factor, min_neighbors)
+        if len(eyes) >= 2:
+            face_aligned = align_face(
+                img, face_bbox, eyes,
+                desired_left_eye=desired_left_eye,
+                desired_face_width=desired_face_width,
+                desired_face_height=desired_face_height,)
+            detected.append(Face(
+                bbox=face_bbox,
+                mat=face_aligned,
+                eyes=eyes
+            ))
+            if max_faces is not None and len(detected) == max_faces:
+                return detected
+
+    return detected
 
 
 # Modified from https://github.com/jrosebr1/imutils/blob/master/imutils/face_utils/facealigner.py
 def align_face(img,
                face_shape,
                eyes_shapes,
-               desired_left_eye=(0.30, 0.30),
+               desired_left_eye=(0.32, 0.32),
                desired_face_width=256,
                desired_face_height=None,):
 
     if desired_face_height is None:
-        desired_face_height = desired_face_width
+        desired_face_height = int(desired_face_width * 1.2)
 
     (left_eye_shape, right_eye_shape) = detect_eyes(eyes_shapes)
 
@@ -51,23 +95,23 @@ def align_face(img,
     eye_center_y = eyes_center[1]
     x = eye_center_x - desired_face_width // 2
     y = eye_center_y - desired_face_height // 2
-    face = img[y:y+h, x:x+w]
+    xf = x + w
+    yf = y + h
+    x = max(0, x)
+    y = max(0, y)
+    face = img[y:yf, x:xf]
     return face
 
 
 def detect_eyes(eyes):
-    assert len(eyes) == 2
-    if eyes[0][0] < eyes[1][0]:
-        left_eye=eyes[0]
-        right_eye=eyes[1]
-    else:
-        left_eye=eyes[1]
-        right_eye=eyes[0]
-    return left_eye, right_eye
+    assert len(eyes) >= 2
+    eyes = sorted(eyes, key=lambda eye: eye[2])[-2:]
+    eyes = sorted(eyes, key=lambda eye: eye[0])
+    return eyes[0], eyes[1]
 
 
 def main():
-    parser=util.HelperParser(
+    parser = util.HelperParser(
         description='OpenCV faces utilities using cascade detector.')
     parser.add_argument('-f', '--face_classifier', required=True,
                         help='The face classifier to be used.')
@@ -92,21 +136,20 @@ def main():
 
     while not killer.kill_now:
         frame = cap.read()
-        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        faces = face_detector.detectMultiScale(gray, 1.3, 5)
-        face_found = None
-        if len(faces) > 0:
-            face_shape = faces[0]
-            (x, y, w, h) = face_shape
-            face = gray[y:y+h, x:x+w]
-            eyes = eye_detector.detectMultiScale(face, 1.3, 5)
-            if len(eyes) == 2:
-                face_found = align_face(frame, face_shape, eyes)
-            else:
-                face_found = None
+        #gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        faces = detect_faces(frame, face_detector, eye_detector,
+                             max_faces=1)
+        face_found = None if len(faces) == 0 else faces[0]
 
         if face_found is not None:
-            cv.imshow('frame', face_found)
+            mat = face_found.mat
+            w = len(mat[0])
+            h = len(mat)
+            frame[0:h, 0: w] = mat
+            (x, y, w, h) = face_found.bbox
+            cv.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+        cv.imshow('frame', frame)
         cv.waitKey(1)
     cap.release()
     cv.destroyAllWindows()
