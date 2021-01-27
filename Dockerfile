@@ -97,6 +97,8 @@ RUN cd /openface/openface-${OPENFACE_VERSION} && \
     python3 setup.py install
 
 ADD ./*.py /detect_it_all_bot/
+COPY ./requirements.txt /detect_it_all_bot/
+RUN pip3 install -r /detect_it_all_bot/requirements.txt
 
 # Cleaning image.
 RUN apt-get clean  \

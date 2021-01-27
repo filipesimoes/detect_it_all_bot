@@ -5,15 +5,12 @@ from faces_util import detect_faces
 import re
 from os.path import abspath
 import os
+import time
 
 
 def main():
     parser = util.HelperParser(
         description='Openface representation utility.')
-    parser.add_argument('-f', '--face_classifier', required=True,
-                        help='The face classifier to be used.')
-    parser.add_argument('-e', '--eye_classifier', required=True,
-                        help='The eye classifier to be used.')
     parser.add_argument('-t', '--torch_face_model', required=True,
                         help='The torch network model to be used.')
     parser.add_argument('-p', '--path', required=True,
@@ -33,14 +30,14 @@ def main():
                         help='The regex to extract the face label.')
 
     args = parser.parse_args()
-    face_detector = cv.CascadeClassifier(args.face_classifier)
-    eye_detector = cv.CascadeClassifier(args.eye_classifier)
     net = openface_util.TorchNeuralNet(args.openface_dir,
                                        args.torch_face_model, imgDim=args.img_dim, cuda=args.cuda)
     output = abspath(args.output)
     label_regex = re.compile(args.regex)
 
-    with open(output + "/representations.txt", 'w') as f:
+    f_reps = open(output + "/representations.txt", 'w')
+    f_labels = open(output + "/labels.txt", 'w')
+    try:
         for file in os.listdir(abspath(args.path)):
             file = abspath(args.path) + "/" + file
             file_components = os.path.splitext(file)
@@ -49,11 +46,17 @@ def main():
             label_match = label_regex.search(file_name)
             if extension in args.suffixes and label_match:
                 label = label_match[1]
-                print(f"Loading file '{file}' with label {label}.")
                 img = cv.imread(file)
+                t0 = time.time()
                 rep = net.forward(img)
-                rep_str = ';'.join(str(v) for v in rep)
-                f.write(f"{file};{label};{rep_str}\n")
+                took = time.time() - t0
+                print(f"Analising file '{file}' with label {label} took {took:.01f}s.")
+                rep_str = ','.join(str(v) for v in rep)
+                f_reps.write(f"{rep_str}\n")
+                f_labels.write(f"{label}\n")
+    finally:
+        f_reps.close()
+        f_labels.close()
 
 
 if __name__ == "__main__":

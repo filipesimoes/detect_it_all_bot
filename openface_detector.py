@@ -3,7 +3,12 @@ import util
 import threading
 import detect_it_all_bot
 import time
-from faces_util import align_face
+from faces_util import detect_faces
+from sklearn.svm import SVC
+from sklearn.preprocessing import LabelEncoder
+import openface_util
+import pandas as pd
+import numpy as np
 
 
 class OpenfaceDetector():
@@ -11,32 +16,51 @@ class OpenfaceDetector():
     def __init__(self,
                  classifier_path: str,
                  eye_classifier_path: str,
-                 recognizer_path: str,
-                 names,
+                 model_path: str,
+                 labels_path,
+                 reps_path,
                  cap: util.BufferlessVideoCapture,
                  color=(255, 0, 0),
+                 minimum_probability: float = 0.5,
                  cooldown: float = 30,
-                 min_probability: float = 50,
-                 visible: bool = False,):
+                 img_dim: int = 96,
+                 visible: bool = False,
+                 cuda: bool = False,
+                 openface_dir: str = "/usr/local/lib/python3.9/dist-packages/openface"):
         self.running = True
         self.callback = self.log_callback
-        self.classifier = cv.CascadeClassifier(classifier_path)
+        self.face_classifier = cv.CascadeClassifier(classifier_path)
         self.eye_classifier = cv.CascadeClassifier(eye_classifier_path)
-        self.recognizer = cv.face.LBPHFaceRecognizer_create()
-        self.recognizer.read(recognizer_path)
-        self.names = names
+        self.net = openface_util.TorchNeuralNet(
+            openface_dir, model_path, imgDim=img_dim, cuda=cuda)
+        self.labels_path = labels_path
+        self.reps_path = reps_path
         self.cap = cap
         self.color = color
+        self.minimum_probability = minimum_probability
         self.cooldown = cooldown
-        self.min_probability = min_probability
         self.visible = visible
         self.users = set()
         self.user_cooldown = {}
+        self.train()
         t = threading.Thread(target=self._run_detection)
         t.daemon = True
         t.start()
 
-    def log_callback(self, chat_id, detection_text):
+    def train(self):
+        labels = pd.read_csv(self.labels_path, header=None)[0].to_list()
+        self.le = LabelEncoder().fit(labels)
+        num_classes = len(self.le.classes_)
+        print(f"Training for {num_classes} classes.")
+        t0 = time.time()
+        reps = pd.read_csv(self.reps_path, header=None).values
+        labels_num = self.le.transform(labels)
+        self.classifier = SVC(C=1, kernel='linear', probability=True)
+        self.classifier.fit(reps, labels_num)
+        took = time.time() - t0
+        print(f"Training took {took}")
+
+    def log_callback(self, chat_id, detection_text, frame):
         print(f"{chat_id}: {detection_text}")
 
     def stop(self):
@@ -51,17 +75,17 @@ class OpenfaceDetector():
                     detection_text = f"{len(faces)} faces detected."
                     detected = False
                     for face in faces:
-                        (x, y, w, h) = face["coords"]
+                        (x, y, w, h) = face["bbox"]
                         face_id = face["face_id"]
                         name = face["name"]
-                        probability = face["probability"]
+                        confidence = face["confidence"]
                         if self.visible:
-                            text = f"{name} ({face_id}): {probability:.1f}"
+                            text = f"{name} ({face_id}): {confidence:.2f}"
                             cv.rectangle(
                                 frame, (x, y), (x + w, y + h), self.color, 2)
                             cv.putText(frame, text, (x, y - 5),
                                        cv.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 1)
-                        detected = detected or probability >= self.min_probability
+                        detected = False  # detected or probability >= self.minimum_probability
                     if detected:
                         for user_id in self.users:
                             if self.user_cooldown[user_id] < time.time():
@@ -69,35 +93,37 @@ class OpenfaceDetector():
                                 ) + self.cooldown
                                 self.callback(user_id, detection_text, frame)
                 if self.visible:
-                    cv.imshow('lbph_face_detector', frame)
+                    cv.imshow('openface', frame)
                     cv.waitKey(1)
 
     def detect_in_frame(self, frame):
-        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        faces = self.classifier.detectMultiScale(gray, 1.3, 5)
         recognized_faces = []
-        for face_coords in faces:
-            (x, y, w, h) = face_coords
-            face = gray[y:y+h, x:x+w]
-            eyes = self.eye_classifier.detectMultiScale(face, 1.3, 5)
-            if len(eyes) == 2:
-                face_found = align_face(gray, face_coords, eyes)
-                face_id, confidence = self.recognizer.predict(face_found)
-                probability = 100 - confidence
-                name = self.names[face_id] if probability >= self.min_probability else "unknown"
-                recognized_faces.append({
-                    "face_id": face_id,
-                    "probability": probability,
-                    "name": name,
-                    "coords": face_coords,
-                })
+        faces = detect_faces(frame,
+                             self.face_classifier,
+                             self.eye_classifier,
+                             desired_face_width=96,
+                             desired_face_height=96,)
+        for face in faces:
+            rep = self.net.forward(face.mat)
+            #rep = rep[1].reshape(1, -1)
+            predictions = self.classifier.predict_proba(rep).ravel()
+            max_i = np.argmax(predictions)
+            name = self.le.inverse_transform(max_i)
+            confidence = predictions[max_i]
+            recognized_faces.append({
+                "bbox": face.bbox,
+                "name": name,
+                "face_id": max_i,
+                "confidence": confidence,
+            })
+
         return recognized_faces
 
     def describe(self):
         return f"""
-This is a OpenCV cascade classifier and
-LBPH face recognizer to detect
-and recognize faces.
+This is a OpenCV cascade classifier
+to detect faces and Openface to
+recognize faces.
 Just send '/detect' and we are ready.
         """
 
@@ -118,10 +144,12 @@ def main():
                         help='The classifier to be used.')
     parser.add_argument('-e', '--eye_classifier', required=True,
                         help='The eye classifier to be used.')
-    parser.add_argument('-r', '--recognizer', required=True,
-                        help='The recognizer to be used.')
-    parser.add_argument('-n', '--names', nargs="+", required=True,
-                        help='The names list to be used.')
+    parser.add_argument('-t', '--torch_face_model', required=True,
+                        help='The torch network model to be used.')
+    parser.add_argument('-l', '--labels', required=True,
+                        help='The labels path.')
+    parser.add_argument('-s', '--representations', required=True,
+                        help='The representations path.')
     parser.add_argument('-d', '--cooldown', default=30, type=float,
                         help='The cooldown after a detection in seconds. Default: 30')
     parser.add_argument('-m', '--minimum_probability', default=50, type=float,
@@ -144,12 +172,13 @@ def main():
     detector = OpenfaceDetector(
         args.classifier,
         args.eye_classifier,
-        args.recognizer,
-        args.names,
+        args.torch_face_model,
+        args.labels,
+        args.representations,
         cap,
+        minimum_probability=args.minimum_probability,
         cooldown=args.cooldown,
         visible=args.visible,
-        min_probability=args.minimum_probability,
     )
     bot = detect_it_all_bot.DetectItAllBot(args.token, args.password, detector)
     detector.callback = bot.detection_callback
