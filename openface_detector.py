@@ -54,9 +54,10 @@ class OpenfaceDetector():
         print(f"Training for {num_classes} classes.")
         t0 = time.time()
         reps = pd.read_csv(self.reps_path, header=None).values
+        sreps = sorted(reps, key=lambda x: x[0])
         labels_num = self.le.transform(labels)
         self.classifier = SVC(C=1, kernel='linear', probability=True)
-        self.classifier.fit(reps, labels_num)
+        self.classifier.fit(sreps, labels_num)
         took = time.time() - t0
         print(f"Training took {took}")
 
@@ -105,10 +106,10 @@ class OpenfaceDetector():
                              desired_face_height=96,)
         for face in faces:
             rep = self.net.forward(face.mat)
-            #rep = rep[1].reshape(1, -1)
+            rep = rep.reshape(1, -1)
             predictions = self.classifier.predict_proba(rep).ravel()
             max_i = np.argmax(predictions)
-            name = self.le.inverse_transform(max_i)
+            name = self.le.inverse_transform([max_i])[0]
             confidence = predictions[max_i]
             recognized_faces.append({
                 "bbox": face.bbox,
