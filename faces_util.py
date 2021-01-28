@@ -18,7 +18,8 @@ def detect_faces(img,
                  max_faces: int = None,
                  desired_left_eye=(0.32, 0.32),
                  desired_face_width=256,
-                 desired_face_height=None,) -> List[NamedTuple]:
+                 desired_face_height=None,
+                 desired_eye_center: float = 0.8,) -> List[NamedTuple]:
     """
     Detect faces and align it based on eyes landmarks.
     """
@@ -35,7 +36,8 @@ def detect_faces(img,
                 img, face_bbox, eyes,
                 desired_left_eye=desired_left_eye,
                 desired_face_width=desired_face_width,
-                desired_face_height=desired_face_height,)
+                desired_face_height=desired_face_height,
+                desired_eye_center=desired_eye_center,)
             detected.append(Face(
                 bbox=face_bbox,
                 mat=face_aligned,
@@ -52,8 +54,9 @@ def align_face(img,
                face_shape,
                eyes_shapes,
                desired_left_eye=(0.32, 0.32),
-               desired_face_width=256,
-               desired_face_height=None,):
+               desired_face_width: int = 256,
+               desired_face_height: int = None,
+               desired_eye_center: float = 0.8):
 
     if desired_face_height is None:
         desired_face_height = int(desired_face_width * 1.2)
@@ -94,7 +97,8 @@ def align_face(img,
     eye_center_x = eyes_center[0]
     eye_center_y = eyes_center[1]
     x = eye_center_x - desired_face_width // 2
-    y = eye_center_y - desired_face_height // 2
+    dy = int(desired_eye_center * desired_face_height) // 2
+    y = eye_center_y - dy
     xf = x + w
     yf = y + h
     x = max(0, x)
