@@ -37,6 +37,7 @@ def main():
 
     f_reps = open(output + "/representations.txt", 'w')
     f_labels = open(output + "/labels.txt", 'w')
+    f_files = open(output + "/files.txt", 'w')
     try:
         for file in os.listdir(abspath(args.path)):
             file = abspath(args.path) + "/" + file
@@ -54,9 +55,11 @@ def main():
                 rep_str = ','.join(str(v) for v in rep)
                 f_reps.write(f"{rep_str}\n")
                 f_labels.write(f"{label}\n")
+                f_files.write(f"{file}\n")
     finally:
         f_reps.close()
         f_labels.close()
+        f_files.close()
 
 
 if __name__ == "__main__":

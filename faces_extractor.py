@@ -40,14 +40,16 @@ def main():
         file = abspath(args.path) + "/" + file
         extension = os.path.splitext(file)[1]
         if extension in args.suffixes:
-            print(f"Loading file '{file}'.")
+            print(f"Loading file '{file}'...", end='')
             img = cv.imread(file)
             if (img is None):
                 print(f"Could not load '{file}'.")
             else:
                 faces = detect_faces(img, face_detector, eye_detector,
                                      desired_face_width=args.face_width,
-                                     desired_face_height=args.face_height)
+                                     desired_face_height=args.face_height,
+                                     rotations=[-45.0, -22.5, 0.0, 22.5, 45.0])
+                print(f"{len(faces)} faces found.")
                 for face in faces:
                     mat = face.mat
                     w = len(mat[0])

@@ -5,10 +5,11 @@ import detect_it_all_bot
 import time
 from faces_util import detect_faces
 from sklearn.svm import SVC
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, Normalizer
 import openface_util
 import pandas as pd
 import numpy as np
+from scipy.spatial import distance
 
 
 class OpenfaceDetector():
@@ -48,16 +49,17 @@ class OpenfaceDetector():
         t.start()
 
     def train(self):
-        labels = pd.read_csv(self.labels_path, header=None)[0].to_list()
-        self.le = LabelEncoder().fit(labels)
+        self.labels = pd.read_csv(self.labels_path, header=None)[0].to_list()
+        self.le = LabelEncoder().fit(self.labels)
         num_classes = len(self.le.classes_)
+        self.norm = Normalizer(norm='l2')
         print(f"Training for {num_classes} classes.")
         t0 = time.time()
-        reps = pd.read_csv(self.reps_path, header=None).values
-        sreps = sorted(reps, key=lambda x: x[0])
-        labels_num = self.le.transform(labels)
+        self.reps = pd.read_csv(self.reps_path, header=None).values
+        self.reps = self.norm.transform(self.reps)
+        labels_num = self.le.transform(self.labels)
         self.classifier = SVC(C=1, kernel='linear', probability=True)
-        self.classifier.fit(sreps, labels_num)
+        self.classifier.fit(self.reps, labels_num)
         took = time.time() - t0
         print(f"Training took {took}")
 
@@ -66,6 +68,7 @@ class OpenfaceDetector():
 
     def stop(self):
         self.running = False
+        self.net.close()
 
     def _run_detection(self):
         while self.running:
@@ -77,11 +80,11 @@ class OpenfaceDetector():
                     detected = False
                     for face in faces:
                         (x, y, w, h) = face["bbox"]
-                        face_id = face["face_id"]
+                        #face_id = face["face_id"]
                         name = face["name"]
                         confidence = face["confidence"]
                         if self.visible:
-                            text = f"{name} ({face_id}): {confidence:.2f}"
+                            text = f"{name}: {confidence:.2f}"
                             cv.rectangle(
                                 frame, (x, y), (x + w, y + h), self.color, 2)
                             cv.putText(frame, text, (x, y - 5),
@@ -106,8 +109,9 @@ class OpenfaceDetector():
                              desired_face_height=96,)
         for face in faces:
             rep = self.net.forward(face.mat)
-            rep = rep.reshape(1, -1)
+            rep = self.norm.transform(rep.reshape(1, -1))
             predictions = self.classifier.predict_proba(rep).ravel()
+            #(distance, name) = self.get_closest(rep)
             max_i = np.argmax(predictions)
             name = self.le.inverse_transform([max_i])[0]
             confidence = predictions[max_i]
@@ -119,6 +123,20 @@ class OpenfaceDetector():
             })
 
         return recognized_faces
+
+    def get_closest(self, frame_rep):
+        distances = []
+        for i, rep in enumerate(self.reps):
+            d = np.dot(frame_rep, rep)
+            name = self.labels[i]
+            distances.append((d, name))
+        distances = sorted(distances, reverse=True, key=lambda v: v[0])
+        print()
+        for d in distances:
+            print(d)
+        print()
+        (d, name) = distances[0]
+        return (d, name)
 
     def describe(self):
         return f"""

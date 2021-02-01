@@ -2,6 +2,7 @@ import util
 import cv2 as cv
 import numpy as np
 from typing import NamedTuple, List, Tuple
+from math import cos, sin
 
 
 class Face(NamedTuple):
@@ -19,32 +20,46 @@ def detect_faces(img,
                  desired_left_eye=(0.32, 0.32),
                  desired_face_width=256,
                  desired_face_height=None,
-                 desired_eye_center: float = 0.8,) -> List[NamedTuple]:
+                 desired_eye_center: float = 0.8,
+                 rotations: List[float] = [0.0]) -> List[Face]:
     """
     Detect faces and align it based on eyes landmarks.
     """
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    (h, w) = img.shape[:2]
+    center = (w // 2, h // 2)
     detected = []
-    faces = face_classifier.detectMultiScale(gray, scale_factor, min_neighbors)
-    for face_bbox in faces:
-        (x, y, w, h) = face_bbox
-        face = gray[y:y+h, x:x+w]
-        eyes = eye_classifier.detectMultiScale(
-            face, scale_factor, min_neighbors)
-        if len(eyes) >= 2:
-            face_aligned = align_face(
-                img, face_bbox, eyes,
-                desired_left_eye=desired_left_eye,
-                desired_face_width=desired_face_width,
-                desired_face_height=desired_face_height,
-                desired_eye_center=desired_eye_center,)
-            detected.append(Face(
-                bbox=face_bbox,
-                mat=face_aligned,
-                eyes=eyes
-            ))
-            if max_faces is not None and len(detected) == max_faces:
-                return detected
+    for angle in rotations:
+        M = cv.getRotationMatrix2D(center, angle, 1.0)
+        if angle == 0.0:
+            rotated = img
+        else:
+            rotated = cv.warpAffine(img, M, (w, h))
+        gray = cv.cvtColor(rotated, cv.COLOR_BGR2GRAY)
+        faces = face_classifier.detectMultiScale(
+            gray, scale_factor, min_neighbors)
+        for face_bbox in faces:
+            (x, y, w, h) = face_bbox
+            face = gray[y:y+h, x:x+w]
+            eyes = eye_classifier.detectMultiScale(
+                face, scale_factor, min_neighbors)
+            if len(eyes) >= 2:
+                face_aligned = align_face(
+                    rotated, face_bbox, eyes,
+                    desired_left_eye=desired_left_eye,
+                    desired_face_width=desired_face_width,
+                    desired_face_height=desired_face_height,
+                    desired_eye_center=desired_eye_center,)
+                #angle = -1 * angle
+                #ix = int(cos(angle) * x - sin(angle) * y)
+                #iy = int(sin(angle) * x + cos(angle) * y)
+                #face_bbox = (ix, iy, w, h)
+                detected.append(Face(
+                    bbox=face_bbox,
+                    mat=face_aligned,
+                    eyes=eyes
+                ))
+                if max_faces is not None and len(detected) == max_faces:
+                    return detected
 
     return detected
 
@@ -140,9 +155,10 @@ def main():
 
     while not killer.kill_now:
         frame = cap.read()
-        #gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        # gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         faces = detect_faces(frame, face_detector, eye_detector,
-                             max_faces=1)
+                             max_faces=1,
+                             rotations=[-45.0, -22.5, 0.0, 22.5, 45.0])
         face_found = None if len(faces) == 0 else faces[0]
 
         if face_found is not None:

@@ -15,20 +15,20 @@
 """Module for Torch-based neural network usage."""
 """ Modified for this project """
 
+
+#myDir = os.path.dirname(os.path.realpath(__file__))
+
+# Workaround for non-standard terminals, originally reported in
+# https://github.com/cmusatyalab/openface/issues/66
 import atexit
 import binascii
 from subprocess import Popen, PIPE
 import os
 import os.path
 import sys
-
 import numpy as np
 import cv2
-
-#myDir = os.path.dirname(os.path.realpath(__file__))
-
-# Workaround for non-standard terminals, originally reported in
-# https://github.com/cmusatyalab/openface/issues/66
+from time import sleep
 os.environ['TERM'] = 'linux'
 
 
@@ -38,9 +38,10 @@ class TorchNeuralNet:
     #: The default Torch model to use.
     #defaultModel = os.path.join(myDir, '..', 'models', 'openface', 'nn4.small2.v1.t7')
 
-    def __init__(self, openface_dir:str, model=None, imgDim=96, cuda=False):
+    def __init__(self, openface_dir: str, model=None, imgDim=96, cuda=False):
         if model is None:
-            model = os.path.join(openface_dir, '..', 'models', 'openface', 'nn4.small2.v1.t7')
+            model = os.path.join(openface_dir, '..', 'models',
+                                 'openface', 'nn4.small2.v1.t7')
 
         """__init__(self, model=defaultModel, imgDim=96, cuda=False)
 
@@ -71,6 +72,16 @@ class TorchNeuralNet:
             if self.p.poll() is None:
                 self.p.kill()
         atexit.register(exitHandler)
+
+    def close(self):
+        count = 0
+        while self.p.poll() is not None and count < 20:
+            sleep(0.01)
+            count = count + 1
+        if count >= 20:
+            self.p.kill()
+        else:
+            self.p.terminate()
 
     def forwardPath(self, imgPath):
         """
